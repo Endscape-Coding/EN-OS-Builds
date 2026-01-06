@@ -1,0 +1,13 @@
+# Maintainer: Endscape <endscape.coding@gmail.com>
+pkgname=en-plymouth-theme
+pkgver=1.0
+pkgrel=1
+pkgdesc="plymouth-theme for EN-OS"
+arch=('x86_64')
+url="https://endscape-coding.github.io"
+license=('GPL')
+depends=(plymouth)
+
+package() {
+    cp -r usr    "$pkgdir/"
+}

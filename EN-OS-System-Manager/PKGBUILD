@@ -1,0 +1,14 @@
+# Maintainer: Endscape <endscape.coding@gmail.com>
+pkgname=en-system-manager
+pkgver=1.6
+pkgrel=1
+pkgdesc="System Manager for EN-OS"
+arch=('x86_64')
+url="https://endscape-coding.github.io"
+license=('GPL')
+depends=(en-zapret-manager)
+
+package() {
+    cp -r usr    "$pkgdir/"
+    cp -r etc    "$pkgdir/"
+}

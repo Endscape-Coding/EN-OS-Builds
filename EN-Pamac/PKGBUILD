@@ -1,0 +1,50 @@
+# Maintainer: Endscape <your@email.com>
+pkgname=pamac-en-os
+pkgver=11.7.3
+pkgrel=1
+pkgdesc="A Gtk3 frontend for libalpm with EN-OS modifications"
+arch=('x86_64')
+url="https://endscape-coding.github.io/"
+license=('GPL3')
+depends=(
+    'gtk3'
+    'libnotify'
+    'json-glib'
+    'libadwaita'
+    'archlinux-appstream-data'
+    'polkit'
+)
+makedepends=(
+    'gettext'
+    'itstool'
+    'vala>=0.56'
+    'meson'
+    'ninja'
+)
+conflicts=('pamac' 'pamac-gtk')
+provides=('pamac' 'pamac-gtk')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  CFLAGS="-Wno-deprecated-declarations" \
+  CXXFLAGS="-Wno-deprecated-declarations" \
+  meson setup builddir \
+    --prefix=/usr \
+    --libexecdir=lib \
+    --buildtype=plain
+
+  meson compile -C builddir
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  DESTDIR="$pkgdir" meson install -C builddir
+}

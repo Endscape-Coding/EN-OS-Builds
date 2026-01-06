@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=EN-System-manager
+Comment=Start manager for EN-OS
+Exec=/usr/bin/enos-system-manager
+Icon=/usr/share/icons/en-os/start/logo.png
+Categories=Utility;System;
+Terminal=false
+StartupNotify=false

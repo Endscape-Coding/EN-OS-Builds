@@ -1,0 +1,2 @@
+#!/bin/bash
+python3 /usr/share/EN-start-manager/EN-OS-Driver_Manager.py
