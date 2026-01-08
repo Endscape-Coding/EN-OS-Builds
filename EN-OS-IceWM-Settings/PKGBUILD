@@ -1,0 +1,13 @@
+# Maintainer: Endscape <endscape.coding@gmail.com>
+pkgname=en-os-icewm-settings-manager
+pkgver=1.0
+pkgrel=1
+pkgdesc="Settings Manager for EN-OS (IceWM)"
+arch=('x86_64')
+url="https://endscape-coding.github.io"
+license=('GPL')
+depends=(icewm)
+
+package() {
+    cp -r usr    "$pkgdir/"
+}

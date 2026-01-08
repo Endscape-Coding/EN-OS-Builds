@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=IceWM Settings
+Comment=IceWM Settings manager for EN-OS
+Exec=/usr/bin/enos-icewm-settings
+Icon=preferences-system
+Categories=Utility;System;
+Terminal=false
+StartupNotify=false
