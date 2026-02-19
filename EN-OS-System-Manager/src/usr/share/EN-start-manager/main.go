@@ -38,8 +38,8 @@ import (
 var sudoPassword string
 
 const (
-	BOT_TOKEN     = "TOKEN"
-	ADMIN_CHAT_ID = 00000000
+	BOT_TOKEN = "TOKEN"
+	ADMIN_CHAT_ID = 0000000000
 	LOG_FILE_NAME = "app.log"
 	MAX_LOG_SIZE  = 3 * 1024 * 1024
 	VERSION       = "for EN-OS v3.0"
@@ -250,7 +250,7 @@ func tr(key string) string {
 			return val
 		}
 	}
-	return key // fallback
+	return key
 }
 
 func init() {
@@ -317,10 +317,10 @@ func getSystemInfo() string {
 	diskPercent := diskInfo.UsedPercent
 
 	return fmt.Sprintf(tr("system_info"),
-			   hostname, username, ip, osInfo, kernel,
-		    VERSION, isAdmin(), currentDir,
-			   cpuName, cpuUsage,
-		    ramUsed, ramTotal, ramPercent,
+			   escapeMarkdownV2(hostname), escapeMarkdownV2(username), escapeMarkdownV2(ip), escapeMarkdownV2(osInfo), escapeMarkdownV2(kernel),
+			   escapeMarkdownV2(VERSION), isAdmin(), escapeMarkdownV2(currentDir),
+			   escapeMarkdownV2(cpuName), cpuUsage,
+			   ramUsed, ramTotal, ramPercent,
 		    diskUsed, diskTotal, diskPercent,
 	)
 }
@@ -349,19 +349,28 @@ func initBot() error {
 
 	bot.Debug = false
 	log.Printf("Authorized on account %s", bot.Self.UserName)
-
-	msg := tgbotapi.NewMessage(ADMIN_CHAT_ID, "🚀 Bot started successfully!\n"+getSystemInfo())
-	msg.ParseMode = "Markdown"
-	if _, err := bot.Send(msg); err != nil {
-		return fmt.Errorf("failed to send start message: %v", err)
-	}
+	sendMarkdownSafe(ADMIN_CHAT_ID, "🚀 Bot started successfully!\n"+getSystemInfo())
 	sendScreenshot(ADMIN_CHAT_ID)
 
 	return nil
 }
 
+func sendMarkdownSafe(chatID int64, text string) {
+	safe := escapeMarkdownV2(text)
+	msg := tgbotapi.NewMessage(chatID, safe)
+	msg.ParseMode = tgbotapi.ModeMarkdownV2
+	if _, err := bot.Send(msg); err != nil {
+		fallback := tgbotapi.NewMessage(chatID, text)
+		bot.Send(fallback)
+		log.Printf("Markdown failed, sent plain: %v", err)
+	}
+}
+
 func createKeyboard() tgbotapi.ReplyKeyboardMarkup {
 	return tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/start"),
+		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("/help"), tgbotapi.NewKeyboardButton("/info"), tgbotapi.NewKeyboardButton("/logs"),
 		),
@@ -388,6 +397,15 @@ func createKeyboard() tgbotapi.ReplyKeyboardMarkup {
 		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("/sudo_pass"), tgbotapi.NewKeyboardButton("/clear_sudo"), tgbotapi.NewKeyboardButton("/language"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/uptime"), tgbotapi.NewKeyboardButton("/who"), tgbotapi.NewKeyboardButton("/top"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/disks"), tgbotapi.NewKeyboardButton("/memory"), tgbotapi.NewKeyboardButton("/authlog"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/sessions"),
 		),
 	)
 }
@@ -423,7 +441,7 @@ func handleBotCommands() {
 
 			if update.Message.Document != nil {
 				if waitingForUpload {
-					handleFileUpload(update, currentDir) // use currentDir or specified
+					handleFileUpload(update, currentDir)
 					waitingForUpload = false
 				} else {
 					handleFileUpload(update, currentDir)
@@ -506,12 +524,12 @@ func handleBotCommands() {
 			switch command {
 				case "start", "help":
 					msg.Text = fmt.Sprintf(tr("welcome"), VERSION)
-					msg.ParseMode = "HTML"
+					msg.ParseMode = tgbotapi.ModeHTML
 					bot.Send(msg)
 
 				case "info":
 					msg.Text = getSystemInfo()
-					msg.ParseMode = "Markdown"
+					msg.ParseMode = tgbotapi.ModeMarkdownV2
 					bot.Send(msg)
 
 				case "logs":
@@ -528,16 +546,6 @@ func handleBotCommands() {
 				case "sudo_pass":
 					if args == "" {
 						sendMessage(chatID, tr("sudo_pass_usage"))
-						// Note: for security, better to always require arg, but to simplify
-						// We can set waiting, but password in plain text, better with arg
-						sudoPassword = args // actually set if args present
-						if args != "" {
-							sendMessage(chatID, "✅ Sudo password set")
-							time.AfterFunc(5*time.Minute, func() {
-								sudoPassword = ""
-								log.Println("Sudo password cleared")
-							})
-						}
 					} else {
 						sudoPassword = args
 						sendMessage(chatID, "✅ Sudo password set")
@@ -554,7 +562,7 @@ func handleBotCommands() {
 				case "ps":
 					messages := ListProcesses()
 					for _, msgText := range messages {
-						sendMessage(chatID, msgText)
+						sendMarkdownMessage(chatID, msgText)
 					}
 
 				case "kill":
@@ -575,7 +583,7 @@ func handleBotCommands() {
 
 				case "upload":
 					if args != "" {
-						currentDir = args // set temp path
+						currentDir = args
 					}
 					sendMessage(chatID, tr("upload_usage"))
 					waitingForUpload = true
@@ -606,7 +614,7 @@ func handleBotCommands() {
 					if err != nil {
 						sendMessage(chatID, fmt.Sprintf(tr("cd_error"), err))
 					} else {
-						sendMessage(chatID, contents)
+						sendMarkdownMessage(chatID, contents)
 					}
 
 				case "screenshot":
@@ -745,18 +753,113 @@ func handleBotCommands() {
 						sendMessage(chatID, tr("lock_success"))
 					}
 
+				case "uptime":
+					out, err := exec.Command("uptime").Output()
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else {
+						sendMarkdownMessage(chatID, "```text\n"+string(out)+"```")
+					}
+
+				case "who":
+					out, err := exec.Command("who").Output()
+					if err != nil || len(out) == 0 {
+						out, err = exec.Command("w").Output()
+					}
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else if len(out) == 0 {
+						sendMessage(chatID, "No users logged in")
+					} else {
+						sendMarkdownMessage(chatID, "```text\n"+string(out)+"```")
+					}
+
+				case "top":
+					messages := ListTopProcesses(10)
+					for _, msgText := range messages {
+						sendMarkdownMessage(chatID, msgText)
+					}
+
+				case "disks":
+					out, err := exec.Command("df", "-h").Output()
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else {
+						sendMarkdownMessage(chatID, "```text\n"+string(out)+"```")
+					}
+
+				case "memory":
+					out, err := exec.Command("free", "-h").Output()
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else {
+						sendMarkdownMessage(chatID, "```text\n"+string(out)+"```")
+					}
+
+				case "authlog":
+					out, err := exec.Command("last").Output()
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else {
+						sendMarkdownMessage(chatID, "```text\n"+string(out)+"```")
+					}
+
+				case "sessions":
+					out, err := exec.Command("loginctl", "list-sessions").Output()
+					if err != nil {
+						sendMessage(chatID, fmt.Sprintf("Error: %v", err))
+					} else {
+						lines := strings.Split(string(out), "\n")
+						var waylandSessions []string
+						for _, line := range lines {
+							if strings.Contains(line, "wayland") {
+								waylandSessions = append(waylandSessions, line)
+							}
+						}
+						if len(waylandSessions) == 0 {
+							sendMessage(chatID, "No Wayland sessions found or only one authorization in Wayland history.")
+						} else {
+							sendMarkdownMessage(chatID, "```text\n"+strings.Join(waylandSessions, "\n")+"```")
+						}
+					}
+
 				default:
 					sendMessage(chatID, tr("unknown_command"))
 			}
 	}
 }
 
+func escapeMarkdownV2(s string) string {
+	special := []rune{'_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'}
+	var builder strings.Builder
+	for _, r := range s {
+		if containsRune(special, r) {
+			builder.WriteRune('\\')
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
+}
+
+func containsRune(slice []rune, r rune) bool {
+	for _, s := range slice {
+		if s == r {
+			return true
+		}
+	}
+	return false
+}
+
+func sendMarkdownMessage(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = tgbotapi.ModeMarkdownV2
+	bot.Send(msg)
+}
+
 func lockScreen() error {
-	// For GNOME
 	if err := exec.Command("gnome-screensaver-command", "-l").Run(); err == nil {
 		return nil
 	}
-	// For others
 	if err := exec.Command("xdg-screensaver", "lock").Run(); err == nil {
 		return nil
 	}
@@ -803,29 +906,38 @@ func removePath(path string) error {
 
 func emulateHotkey(keys string) error {
 	keyMap := map[string]string{
-		"ctrl":    "Control",
-		"alt":     "Alt",
-		"shift":   "Shift",
-		"win":     "Super",
-		"enter":   "Return",
-		"tab":     "Tab",
-		"esc":     "Escape",
-		"space":   "space",
+		"ctrl":      "Control",
+		"alt":       "Alt",
+		"shift":     "Shift",
+		"win":       "Super",
+		"enter":     "Return",
+		"tab":       "Tab",
+		"esc":       "Escape",
+		"space":     "space",
 		"backspace": "BackSpace",
-		"delete":  "Delete",
-		"up":      "Up",
-		"down":    "Down",
-		"left":    "Left",
-		"right":   "Right",
-		"f1":      "F1",
-		"f2":      "F2",
-		// ... add more F keys if needed
-		"vol_up":   "XF86AudioRaiseVolume",
-		"vol_down": "XF86AudioLowerVolume",
-		"mute":     "XF86AudioMute",
+		"delete":    "Delete",
+		"up":        "Up",
+		"down":      "Down",
+		"left":      "Left",
+		"right":     "Right",
+		"f1":        "F1",
+		"f2":        "F2",
+		"f3":	     "F3",
+		"f4":        "F4",
+		"f5":        "F5",
+		"f6":        "F6",
+		"f7":        "F7",
+		"f8":        "F8",
+		"f9":        "F9",
+		"f10":       "F10",
+		"f11":       "F11",
+		"f12":       "F12",
+		"vol_up":    "XF86AudioRaiseVolume",
+		"vol_down":  "XF86AudioLowerVolume",
+		"mute":      "XF86AudioMute",
 		"play_pause": "XF86AudioPlay",
-		"next":     "XF86AudioNext",
-		"prev":     "XF86AudioPrev",
+		"next":      "XF86AudioNext",
+		"prev":      "XF86AudioPrev",
 	}
 
 	parts := strings.Split(strings.ToLower(keys), "+")
@@ -898,6 +1010,7 @@ type ProcessInfo struct {
 	Count    int
 	PIDs     []int32
 	MemUsage float64
+	CPUPercent float64
 }
 
 func ListProcesses() []string {
@@ -914,13 +1027,15 @@ func ListProcesses() []string {
 		if mem != nil {
 			memMB = float64(mem.RSS) / 1024 / 1024
 		}
+		cpuPercent, _ := p.CPUPercent()
 
 		if info, ok := processMap[name]; ok {
 			info.Count++
 			info.PIDs = append(info.PIDs, p.Pid)
 			info.MemUsage += memMB
+			info.CPUPercent += cpuPercent
 		} else {
-			processMap[name] = &ProcessInfo{Name: name, Count: 1, PIDs: []int32{p.Pid}, MemUsage: memMB}
+			processMap[name] = &ProcessInfo{Name: name, Count: 1, PIDs: []int32{p.Pid}, MemUsage: memMB, CPUPercent: cpuPercent}
 		}
 	}
 
@@ -934,14 +1049,52 @@ func ListProcesses() []string {
 	})
 
 	var builder strings.Builder
-	builder.WriteString("```\n")
-	builder.WriteString(fmt.Sprintf("%-30s %5s %10s %s\n", "Name", "Cnt", "Mem(MB)", "PIDs"))
+	builder.WriteString("```text\n")
+	builder.WriteString(fmt.Sprintf("%-30s %5s %10s %10s %s\n", "Name", "Cnt", "Mem(MB)", "CPU(%)", "PIDs"))
 	for _, info := range processList {
 		pidsStr := fmt.Sprint(info.PIDs)
 		if len(info.PIDs) > 3 {
 			pidsStr = fmt.Sprintf("%v +%d", info.PIDs[:3], len(info.PIDs)-3)
 		}
-		builder.WriteString(fmt.Sprintf("%-30s %5d %10.1f %s\n", truncateString(info.Name, 30), info.Count, info.MemUsage, pidsStr))
+		builder.WriteString(fmt.Sprintf("%-30s %5d %10.1f %10.1f %s\n", truncateString(info.Name, 30), info.Count, info.MemUsage, info.CPUPercent, pidsStr))
+	}
+	builder.WriteString("```")
+
+	return splitMessage(builder.String(), 4000)
+}
+
+func ListTopProcesses(topN int) []string {
+	processes, err := process.Processes()
+	if err != nil {
+		return []string{fmt.Sprintf("Error: %v", err)}
+	}
+
+	var processList []*ProcessInfo
+	for _, p := range processes {
+		name, _ := p.Name()
+		mem, _ := p.MemoryInfo()
+		memMB := float64(0)
+		if mem != nil {
+			memMB = float64(mem.RSS) / 1024 / 1024
+		}
+		cpuPercent, _ := p.CPUPercent()
+
+		processList = append(processList, &ProcessInfo{Name: name, Count: 1, PIDs: []int32{p.Pid}, MemUsage: memMB, CPUPercent: cpuPercent})
+	}
+
+	sort.Slice(processList, func(i, j int) bool {
+		return processList[i].CPUPercent > processList[j].CPUPercent // Сортировка по CPU
+	})
+
+	if len(processList) > topN {
+		processList = processList[:topN]
+	}
+
+	var builder strings.Builder
+	builder.WriteString("```text\n")
+	builder.WriteString(fmt.Sprintf("%-30s %10s %10s %s\n", "Name", "Mem(MB)", "CPU(%)", "PID"))
+	for _, info := range processList {
+		builder.WriteString(fmt.Sprintf("%-30s %10.1f %10.1f %d\n", truncateString(info.Name, 30), info.MemUsage, info.CPUPercent, info.PIDs[0]))
 	}
 	builder.WriteString("```")
 
@@ -985,8 +1138,12 @@ func splitMessage(text string, maxLen int) []string {
 	var parts []string
 	for len(text) > maxLen {
 		part := text[:maxLen]
+		lastSpace := strings.LastIndex(part, " ")
+		if lastSpace > 0 {
+			part = part[:lastSpace]
+		}
 		parts = append(parts, part)
-		text = text[maxLen:]
+		text = text[len(part):]
 	}
 	parts = append(parts, text)
 	return parts
@@ -999,7 +1156,7 @@ func getCurrentDirContents() (string, error) {
 	}
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf(tr("pwd_content"), currentDir, ""))
+	builder.WriteString(fmt.Sprintf(tr("pwd_content"), escapeMarkdownV2(currentDir), ""))
 
 	for _, file := range files {
 		info, _ := file.Info()
@@ -1011,10 +1168,11 @@ func getCurrentDirContents() (string, error) {
 			sizeStr = fmt.Sprintf("%.1fKB", float64(size)/1024)
 		}
 
+		fileName := escapeMarkdownV2(file.Name())
 		if file.IsDir() {
-			builder.WriteString(fmt.Sprintf("📁 %s/ (%s)\n", file.Name(), sizeStr))
+			builder.WriteString(fmt.Sprintf("📁 %s/ (%s)\n", fileName, sizeStr))
 		} else {
-			builder.WriteString(fmt.Sprintf("📄 %s (%s)\n", file.Name(), sizeStr))
+			builder.WriteString(fmt.Sprintf("📄 %s (%s)\n", fileName, sizeStr))
 		}
 	}
 
@@ -1179,7 +1337,8 @@ func cleanupParts(parts []string) {
 }
 
 func sendMessage(chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
+	msg := tgbotapi.NewMessage(chatID, escapeMarkdownV2(text))
+	msg.ParseMode = tgbotapi.ModeMarkdownV2
 	bot.Send(msg)
 }
 

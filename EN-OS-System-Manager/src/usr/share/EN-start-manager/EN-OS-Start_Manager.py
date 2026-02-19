@@ -1076,21 +1076,19 @@ class SettingsWindow(QtWidgets.QDialog):
         layout.addWidget(close_btn)
 
     def remove_enos_autostart(self):
-        path = "/etc/xdg/autostart/en-system-manager.desktop"
+        home_dir = os.path.expanduser("~")
+        path = os.path.join(home_dir, ".config", "autostart", "en-system-manager.desktop")
 
         if not os.path.exists(path):
             QMessageBox.information(self, "Info", self.language_manager.get_text('info_autostart_removed'))
             return
 
-        result = subprocess.run(
-            ["pkexec", "rm", "-f", path],
-            capture_output=True
-        )
-
-        if result.returncode == 0:
+        try:
+            os.remove(path)
             QMessageBox.information(self, "OK", self.language_manager.get_text('ok_autostart_removed'))
-        else:
-            QMessageBox.critical(self, "Error", self.language_manager.get_text('error_remove_autostart'))
+        except Exception as e:
+            QMessageBox.critical(self, "Error",
+                                f"{self.language_manager.get_text('error_remove_autostart')}\n{str(e)}")
 
     def disable_pacman_keys_init_service(self):
         result = subprocess.run(

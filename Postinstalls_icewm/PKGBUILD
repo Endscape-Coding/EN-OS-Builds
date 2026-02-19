@@ -1,0 +1,18 @@
+# Maintainer: Endscape <endscape.coding@gmail.com>
+pkgname=postinstalls-icewm
+pkgver=1.0
+pkgrel=1
+maintainer=Endscape
+pkgdesc="IceWM-Postinetall-Scripts for EN-OS"
+arch=('x86_64')
+url="https://endscape-coding.github.io"
+license=('GPL')
+depends=(
+"icewm"
+"papirus-icon-theme"
+)
+
+package() {
+    cp -r usr    "$pkgdir/"
+    cp -r etc    "$pkgdir/"
+}

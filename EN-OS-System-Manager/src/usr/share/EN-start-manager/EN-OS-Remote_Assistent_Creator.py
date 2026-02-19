@@ -508,242 +508,72 @@ class OutputConsole(QTextEdit):
 
 class BuildWorker:
     def __init__(self, token, chat_id, signals):
-        self.token = token
-        self.chat_id = chat_id
+        self.token = token.strip()
+        self.chat_id = chat_id.strip()
         self.signals = signals
         self.stop_requested = False
-        self.work_dir = os.path.expanduser("~/.enclient_build")
 
     def run(self):
         try:
-            self.setup_work_directory()
+            self.signals.progress_updated.emit(5, "Подготовка к запуску сборочного скрипта...")
 
-            self.signals.progress_updated.emit(10, "Checking Go installation...")
+            build_script = "build.sh"
 
-            if not self.check_go_installed():
-                self.signals.output_received.emit("Installing Go...")
-                self.install_go()
+            if not os.path.isfile(build_script):
+                raise FileNotFoundError(f"Скрипт сборки '{build_script}' не найден в текущей папке!")
 
-            self.signals.progress_updated.emit(30, "Installing dependencies...")
-            self.install_dependencies()
+            self.signals.output_received.emit("🚀 Запускаю build.sh с переданными параметрами...")
+            self.signals.output_received.emit(f"   • Token: {self.token[:10]}...****")
+            self.signals.output_received.emit(f"   • Chat ID: {self.chat_id}")
 
-            self.signals.progress_updated.emit(50, "Updating configuration...")
-            self.update_configuration()
-
-            self.signals.progress_updated.emit(70, "Compiling binary...")
-            success = self.compile_binary()
-
-            if success:
-                self.signals.progress_updated.emit(80, "Creating autostart shortcut...")
-                self.create_autostart_shortcut()
-
-                self.signals.progress_updated.emit(90, "Starting application...")
-                self.launch_compiled_binary()
-
-                self.signals.progress_updated.emit(100, "🛠️ Build completed successfully!")
-                self.signals.build_finished.emit(True, "Build successful and application started!")
-            else:
-                self.signals.build_finished.emit(False, "Build failed!")
-
-        except Exception as e:
-            self.signals.output_received.emit(f"❌ Error: {str(e)}")
-            self.signals.build_finished.emit(False, f"Error: {str(e)}")
-
-    def setup_work_directory(self):
-        if os.path.exists(self.work_dir):
-            os.chmod(self.work_dir, 0o755)
-        else:
-            os.makedirs(self.work_dir, mode=0o755)
-
-        source_files = ['main.go', 'go.mod', 'go.sum']
-        for file in source_files:
-            if os.path.exists(file):
-                shutil.copy2(file, os.path.join(self.work_dir, file))
-                self.signals.output_received.emit(f"📁 Copied: {file}")
-
-        assets_src = 'assets'
-        assets_dst = os.path.join(self.work_dir, 'assets')
-
-        if os.path.exists(assets_src) and os.path.isdir(assets_src):
-            if os.path.exists(assets_dst):
-                shutil.rmtree(assets_dst)
-                self.signals.output_received.emit("🔄 Overwriting existing assets folder...")
-
-            shutil.copytree(assets_src, assets_dst)
-            self.signals.output_received.emit("✅ Copied assets folder with all contents")
-
-        os.chdir(self.work_dir)
-        self.signals.output_received.emit(f"📂 Working directory: {self.work_dir}")
-
-    def check_go_installed(self):
-        try:
-            result = subprocess.run(['go', 'version'], capture_output=True, text=True, timeout=30)
-            return result.returncode == 0
-        except:
-            return False
-
-    def install_go(self):
-        try:
-            go_bin_path = os.path.expanduser("~/go/bin/go")
-
-            if not os.path.exists(go_bin_path):
-                self.signals.output_received.emit("📥 Downloading Go...")
-                subprocess.run([
-                    'wget', 'https://golang.org/dl/go1.21.4.linux-amd64.tar.gz',
-                    '-O', os.path.expanduser('~/go.tar.gz')
-                ], check=True, timeout=300)
-
-                subprocess.run(['tar', '-C', os.path.expanduser('~'), '-xzf', os.path.expanduser('~/go.tar.gz')], check=True)
-                subprocess.run(['rm', os.path.expanduser('~/go.tar.gz')], check=True)
-
-            os.environ['PATH'] = f"{os.path.expanduser('~/go/bin')}:{os.environ.get('PATH', '')}"
-
-        except subprocess.TimeoutExpired:
-            raise Exception("Go installation timed out")
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Go installation failed: {e}")
-
-    def install_dependencies(self):
-        try:
-            env = os.environ.copy()
-            env['GOPATH'] = os.path.expanduser('~/go')
-
-            result = subprocess.run(['go', 'mod', 'download'],
-                                  env=env,
-                                  capture_output=True, text=True, timeout=300)
-            if result.returncode != 0:
-                self.signals.output_received.emit(result.stderr)
-                raise Exception("Dependency installation failed")
-        except subprocess.TimeoutExpired:
-            raise Exception("Dependency installation timed out")
-
-    def update_configuration(self):
-        try:
-            self.signals.output_received.emit("🔄 Updating configuration in main.go...")
-
-            with open('main.go', 'r') as file:
-                content = file.read()
-
-            token_pattern = r'BOT_TOKEN\s*=\s*"[^"]*"'
-            new_token_line = f'BOT_TOKEN = "{self.token}"'
-            content = re.sub(token_pattern, new_token_line, content)
-
-            id_pattern = r'ADMIN_CHAT_ID\s*=\s*[0-9]+'
-            new_id_line = f'ADMIN_CHAT_ID = {self.chat_id}'
-            content = re.sub(id_pattern, new_id_line, content)
-
-            with open('main.go', 'w') as file:
-                file.write(content)
-
-            self.signals.output_received.emit("✅ Configuration updated successfully!")
-            self.signals.output_received.emit(f"   Bot Token: {self.token[:15]}...")
-            self.signals.output_received.emit(f"   Chat ID: {self.chat_id}")
-
-        except FileNotFoundError:
-            raise Exception("main.go file not found!")
-        except PermissionError:
-            raise Exception("Permission denied! Cannot write to main.go file.")
-        except Exception as e:
-            raise Exception(f"Failed to update configuration: {str(e)}")
-
-    def compile_binary(self):
-        try:
-            env = os.environ.copy()
-            env['GOPATH'] = os.path.expanduser('~/go')
-
-            result = subprocess.run([
-                'go', 'build', '-o', 'enclient', '-ldflags=-s -w', 'main.go'
-            ], env=env, capture_output=True, text=True, timeout=300)
-
-            if result.stdout:
-                self.signals.output_received.emit(result.stdout)
-            if result.stderr:
-                self.signals.output_received.emit(result.stderr)
-
-            if os.path.exists('enclient'):
-                os.chmod('enclient', 0o755)
-                self.signals.output_received.emit("✅ Binary compiled successfully!")
-                return True
-            else:
-                self.signals.output_received.emit("❌ Compiled binary not found!")
-                return False
-
-        except subprocess.TimeoutExpired:
-            self.signals.output_received.emit("❌ Compilation timed out")
-            return False
-        except Exception as e:
-            self.signals.output_received.emit(f"❌ Compilation error: {e}")
-            return False
-
-    def create_autostart_shortcut(self):
-        try:
-            binary_path = os.path.abspath('enclient')
-
-            desktop_content = f"""[Desktop Entry]
-Type=Application
-Name=EnClient
-Exec={binary_path}
-Comment=EnClient Application
-Categories=Utility;
-StartupNotify=false
-Terminal=false
-X-GNOME-Autostart-enabled=true
-"""
-
-            autostart_dir = os.path.expanduser("~/.config/autostart")
-            if not os.path.exists(autostart_dir):
-                os.makedirs(autostart_dir, mode=0o755)
-
-            autostart_path = os.path.join(autostart_dir, "enclient.desktop")
-
-            with open(autostart_path, 'w') as f:
-                f.write(desktop_content)
-
-            os.chmod(autostart_path, 0o644)
-            self.signals.output_received.emit(f"✅ Autostart shortcut created: {autostart_path}")
-
-        except Exception as e:
-            self.signals.output_received.emit(f"⚠️ Error creating autostart shortcut: {e}")
-
-    def launch_compiled_binary(self):
-        try:
-            self.signals.output_received.emit("🚀 Launching compiled binary...")
-
-            binary_path = './enclient'
-            if not os.path.exists(binary_path):
-                raise Exception("Compiled binary 'enclient' not found!")
-
-            if not os.access(binary_path, os.X_OK):
-                os.chmod(binary_path, 0o755)
-                self.signals.output_received.emit("🔧 Set executable permissions...")
-
-            user_env = os.environ.copy()
-            user_env.update({
-                'HOME': os.environ.get('HOME', ''),
-                'USER': os.environ.get('USER', ''),
-            })
+            cmd = [
+                "bash",
+                build_script,
+                f"--token={self.token}",
+                f"--id={self.chat_id}"
+            ]
 
             process = subprocess.Popen(
-                [binary_path],
+                cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=user_env,
-                cwd=os.getcwd()
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
             )
 
-            time.sleep(2)
+            for line in iter(process.stdout.readline, ''):
+                if self.stop_requested:
+                    process.terminate()
+                    self.signals.output_received.emit("⚠️ Сборка прервана пользователем")
+                    break
+                cleaned = line.rstrip()
+                if cleaned:
+                    self.signals.output_received.emit(cleaned)
 
-            if process.poll() is None:
-                self.signals.output_received.emit("✅ enclient started successfully!")
-                return True
+            process.stdout.close()
+            return_code = process.wait()
+
+            self.signals.progress_updated.emit(100, "Сборка завершена")
+
+            if return_code == 0:
+                self.signals.output_received.emit("🎉 Сборка успешно завершена!")
+                self.signals.build_finished.emit(True, "Приложение собрано и настроено")
             else:
-                stderr_output = process.stderr.read().decode('utf-8', errors='ignore') if process.stderr else "No error output"
-                raise Exception(f"Process exited. Error: {stderr_output[:200]}...")
+                msg = f"Скрипт завершился с ошибкой (код возврата {return_code})"
+                self.signals.output_received.emit("❌ " + msg)
+                self.signals.build_finished.emit(False, msg)
 
+        except FileNotFoundError as e:
+            self.signals.output_received.emit(f"❌ {str(e)}")
+            self.signals.build_finished.emit(False, str(e))
         except Exception as e:
-            error_msg = f"❌ Failed to launch enclient: {str(e)}"
-            self.signals.output_received.emit(error_msg)
-            return False
+            error_msg = f"Критическая ошибка при запуске сборки: {str(e)}"
+            self.signals.output_received.emit("💥 " + error_msg)
+            self.signals.build_finished.emit(False, error_msg)
+
+    def stop(self):
+        self.stop_requested = True
 
 class RemoteAssistantCreator(QMainWindow):
     def __init__(self):

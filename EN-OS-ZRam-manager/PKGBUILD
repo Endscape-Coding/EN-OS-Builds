@@ -1,0 +1,55 @@
+# Maintainer: Endscape <endscape.coding@gmail.com> -> https://github.com/Endscape-Coding
+pkgname=zram-manager
+pkgver=20260219.g2f07a31
+pkgrel=1
+pkgdesc="Zram manager for systemd distributives"
+arch=(x86_64)
+url="https://github.com/Endscape-Coding/EN-OS-Zram-Manager"
+license=(GPL3)
+depends=()
+makedepends=(
+  cargo
+  rust
+  musl
+)
+source=("$pkgname::git+https://github.com/Endscape-Coding/EN-OS-Zram-Manager.git")
+sha256sums=("SKIP")
+
+pkgver() {
+  cd "$pkgname"
+  echo "$(git log -1 --format=%cd --date=format:%Y%m%d).g$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$pkgname"
+  rustup target add x86_64-unknown-linux-musl || true
+}
+
+build() {
+  cd "$pkgname"
+
+  export CC=musl-gcc
+  export TARGET_CC=musl-gcc
+  export RUSTFLAGS="-C target-feature=+crt-static"
+
+  cargo build --release --target x86_64-unknown-linux-musl
+}
+
+check() {
+  cd "$pkgname"
+  cargo test --target x86_64-unknown-linux-musl --release || echo "No tests found"
+}
+
+package() {
+  cd "$pkgname"
+
+  install -Dm755 "target/x86_64-unknown-linux-musl/release/$pkgname" \
+    "${pkgdir}/usr/bin/$pkgname"
+
+  install -Dm644 LICENSE -t "${pkgdir}/usr/share/licenses/$pkgname"
+
+  if [ -f "systemd/zram-manager.service" ]; then
+    install -Dm644 systemd/zram-manager.service \
+      "${pkgdir}/usr/lib/systemd/system/zram-manager.service"
+  fi
+}

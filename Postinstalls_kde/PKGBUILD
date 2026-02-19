@@ -1,5 +1,5 @@
 # Maintainer: Endscape <endscape.coding@gmail.com>
-pkgname=postinstalls_kde
+pkgname=postinstalls-kde
 pkgver=1.0
 pkgrel=1
 maintainer=Endscape
@@ -7,8 +7,11 @@ pkgdesc="KDE-Postinetall-Scripts for EN-OS"
 arch=('x86_64')
 url="https://endscape-coding.github.io"
 license=('GPL')
-depends=(sddm)
+depends=(
+en-os-dark-theme
+)
 
 package() {
     cp -r usr    "$pkgdir/"
+    cp -r etc    "$pkgdir/"
 }

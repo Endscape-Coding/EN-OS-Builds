@@ -1,0 +1,14 @@
+# Maintainer: Endscape <endscape.coding@gmail.com>
+pkgname=gnf-ttf
+pkgver=1.0
+pkgrel=1
+maintainer=Endscape
+pkgdesc="KDE-Postinetall-Scripts for EN-OS"
+arch=('x86_64')
+url="https://endscape-coding.github.io"
+license=('GPL')
+depends=()
+
+package() {
+    cp -r usr    "$pkgdir/"
+}
