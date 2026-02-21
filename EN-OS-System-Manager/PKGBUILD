@@ -10,6 +10,8 @@ license=('GPL')
 depends=(
     'en-zapret-manager'
     'gnf-ttf'
+    'python-pyqt5'
+    'python-pyqt5-sip'
 )
 package() {
     cp -r usr    "$pkgdir/"
