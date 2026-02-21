@@ -9,7 +9,7 @@ license=(GPL3)
 depends=()
 makedepends=(
   cargo
-  rust
+  rustup
   musl
 )
 source=("$pkgname::git+https://github.com/Endscape-Coding/EN-OS-Zram-Manager.git")
